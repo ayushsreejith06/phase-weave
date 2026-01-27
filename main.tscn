@@ -1,0 +1,59 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/simulation_controller.gd" id=1]
+[ext_resource type="Script" path="res://render/swarm_renderer.gd" id=2]
+[ext_resource type="Script" path="res://ui/ui_overlay.gd" id=3]
+
+[node name="Main" type="Node2D"]
+
+[node name="SimulationController" type="Node" parent="."]
+script = ExtResource(1)
+
+[node name="SwarmRenderer" type="Node2D" parent="."]
+script = ExtResource(2)
+
+[node name="UiOverlay" type="CanvasLayer" parent="."]
+script = ExtResource(3)
+
+[node name="Overlay" type="Control" parent="UiOverlay"]
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 0.0
+anchor_bottom = 0.0
+offset_left = 12.0
+offset_top = 12.0
+offset_right = 280.0
+offset_bottom = 220.0
+
+[node name="Backdrop" type="ColorRect" parent="UiOverlay/Overlay"]
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 0.0
+color = Color(0.05, 0.05, 0.05, 0.75)
+
+[node name="VBox" type="VBoxContainer" parent="UiOverlay/Overlay"]
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 0.0
+
+[node name="StartButton" type="Button" parent="UiOverlay/Overlay/VBox"]
+text = "Start"
+
+[node name="RestartButton" type="Button" parent="UiOverlay/Overlay/VBox"]
+text = "Restart"
+
+[node name="PauseButton" type="Button" parent="UiOverlay/Overlay/VBox"]
+text = "Pause"
+
+[node name="DebugLabel" type="Label" parent="UiOverlay/Overlay/VBox"]
+text = "Seed: --"
