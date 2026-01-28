@@ -15,6 +15,8 @@ var _paused := false
 var _resize_timer: Timer
 var _stats_enabled := false
 var _held_zone_type := -1
+var _density_glow_enabled := false
+var _cohesion_ratio := 0.5
 
 @onready var renderer = get_node_or_null("../SwarmRenderer")
 @onready var ui_overlay = get_node_or_null("../UiOverlay")
@@ -54,10 +56,16 @@ func _ready() -> void:
 			ui_overlay.pause_toggled.connect(_on_pause_toggled)
 		if ui_overlay.has_signal("stats_toggled"):
 			ui_overlay.stats_toggled.connect(_on_stats_toggled)
+		if ui_overlay.has_signal("density_toggled"):
+			ui_overlay.density_toggled.connect(_on_density_toggled)
+		if ui_overlay.has_signal("cohesion_ratio_changed"):
+			ui_overlay.cohesion_ratio_changed.connect(_on_cohesion_ratio_changed)
 		if ui_overlay.has_method("set_stats"):
 			stats_updated.connect(ui_overlay.set_stats)
 
 	model.initialize(Config.DEFAULT_AGENT_COUNT, viewport_size, rng)
+	model.set_density_enabled(_density_glow_enabled)
+	phase_rules.set_cohesion_ratio(_cohesion_ratio)
 	if renderer != null:
 		renderer.queue_redraw()
 	_emit_stats()
@@ -86,6 +94,8 @@ func _on_restart_requested() -> void:
 	if Config.DEBUG_PRINT_SEED:
 		print("Seed: %s" % [rng.seed])
 	model.initialize(Config.DEFAULT_AGENT_COUNT, viewport_size, rng)
+	model.set_density_enabled(_density_glow_enabled)
+	phase_rules.set_cohesion_ratio(_cohesion_ratio)
 	if renderer != null:
 		renderer.queue_redraw()
 	_emit_stats()
@@ -98,11 +108,23 @@ func _on_pause_toggled(paused: bool) -> void:
 		tick_timer.stop()
 	else:
 		tick_timer.start()
+	if renderer != null:
+		renderer.queue_redraw()
 
 func _on_stats_toggled(enabled: bool) -> void:
 	_stats_enabled = enabled
 	if ui_overlay != null and ui_overlay.has_method("set_hover_stats") and not enabled:
 		ui_overlay.set_hover_stats("")
+
+func _on_density_toggled(enabled: bool) -> void:
+	_density_glow_enabled = enabled
+	model.set_density_enabled(enabled)
+	if renderer != null:
+		renderer.queue_redraw()
+
+func _on_cohesion_ratio_changed(ratio: float) -> void:
+	_cohesion_ratio = ratio
+	phase_rules.set_cohesion_ratio(ratio)
 
 func _on_tick() -> void:
 	model.step(Config.TICK_DT, phase_rules)
@@ -195,7 +217,7 @@ func _update_hover_stats() -> void:
 	var phase_name = _phase_name(agent.phase)
 	var phase_color = _phase_color(agent.phase)
 	var speed = agent.velocity.length()
-	var text = "Phase: [color=%s]%s[/color]\nPos: %.1f, %.1f\nSpeed: %.1f\nVel: %.1f, %.1f\nDensity: %.2f\nSteer phase: %.2f, %.2f\nSteer zone: %.2f, %.2f" % [
+	var text = "Phase: [color=%s]%s[/color]\nPos: %.1f, %.1f\nSpeed: %.1f\nVel: %.1f, %.1f\nDensity: %.2f\nSteer phase: %.2f, %.2f\nSteer memory: %.2f, %.2f\nSteer zone: %.2f, %.2f" % [
 		phase_color.to_html(false),
 		phase_name,
 		agent.position.x, agent.position.y,
@@ -203,6 +225,7 @@ func _update_hover_stats() -> void:
 		agent.velocity.x, agent.velocity.y,
 		agent.local_density,
 		agent.steering_phase.x, agent.steering_phase.y,
+		agent.steering_memory.x, agent.steering_memory.y,
 		agent.steering_zone.x, agent.steering_zone.y
 	]
 	ui_overlay.set_hover_stats_at(text, agent.position)

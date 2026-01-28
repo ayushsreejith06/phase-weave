@@ -25,7 +25,7 @@ offset_top = 12.0
 offset_right = 280.0
 offset_bottom = 260.0
 
-[node name="Backdrop" type="ColorRect" parent="UiOverlay/Overlay"]
+[node name="Backdrop" type="Panel" parent="UiOverlay/Overlay"]
 anchor_left = 0.0
 anchor_top = 0.0
 anchor_right = 1.0
@@ -34,7 +34,6 @@ offset_left = 0.0
 offset_top = 0.0
 offset_right = 0.0
 offset_bottom = 0.0
-color = Color(0.05, 0.05, 0.05, 0.75)
 
 [node name="VBox" type="VBoxContainer" parent="UiOverlay/Overlay"]
 anchor_left = 0.0
@@ -45,6 +44,14 @@ offset_left = 0.0
 offset_top = 0.0
 offset_right = 0.0
 offset_bottom = 0.0
+
+[node name="TitleLabel" type="Label" parent="UiOverlay/Overlay/VBox"]
+text = "PhaseWeave"
+
+[node name="SubtitleLabel" type="Label" parent="UiOverlay/Overlay/VBox"]
+text = "Swarm phase-transition simulation"
+
+[node name="Divider" type="HSeparator" parent="UiOverlay/Overlay/VBox"]
 
 [node name="StartButton" type="Button" parent="UiOverlay/Overlay/VBox"]
 text = "Start"
@@ -57,6 +64,22 @@ text = "Pause"
 
 [node name="StatsToggle" type="CheckButton" parent="UiOverlay/Overlay/VBox"]
 text = "Stats"
+
+[node name="DensityToggle" type="CheckButton" parent="UiOverlay/Overlay/VBox"]
+text = "Density Glow"
+
+[node name="CohesionLabel" type="Label" parent="UiOverlay/Overlay/VBox"]
+text = "Cohesion/Repel: 50/50"
+
+[node name="CohesionSlider" type="HSlider" parent="UiOverlay/Overlay/VBox"]
+min_value = 0.0
+max_value = 100.0
+value = 50.0
+step = 1.0
+rounded = true
+
+[node name="StatusLabel" type="Label" parent="UiOverlay/Overlay/VBox"]
+text = "Status: Idle"
 
 [node name="DebugLabel" type="Label" parent="UiOverlay/Overlay/VBox"]
 text = "Seed: --"

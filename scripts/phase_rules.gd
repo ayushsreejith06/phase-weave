@@ -3,12 +3,46 @@ class_name PhaseRules
 
 const Config = preload("res://scripts/config.gd")
 
-func compute_phase(current_phase: int, local_density: float) -> int:
-	if local_density < Config.DENSITY_THRESHOLD_LOW:
+var _cohesion_ratio := 0.5
+
+func set_cohesion_ratio(ratio: float) -> void:
+	_cohesion_ratio = clamp(ratio, 0.0, 1.0)
+
+func compute_phase(current_phase: int, local_density: float, phase_time: float) -> int:
+	if phase_time < Config.PHASE_MIN_DURATION:
+		return current_phase
+	var low = Config.DENSITY_THRESHOLD_LOW
+	var high = Config.DENSITY_THRESHOLD_HIGH
+	var hysteresis = Config.DENSITY_HYSTERESIS
+	if _cohesion_ratio >= 0.999:
+		if local_density > low + hysteresis:
+			return Config.Phase.ALIGN
 		return Config.Phase.WANDER
-	if local_density > Config.DENSITY_THRESHOLD_HIGH:
-		return Config.Phase.REPEL
-	return Config.Phase.ALIGN
+	if _cohesion_ratio <= 0.001:
+		if local_density > high:
+			return Config.Phase.REPEL
+		return Config.Phase.WANDER
+	match current_phase:
+		Config.Phase.WANDER:
+			if local_density > high:
+				return Config.Phase.REPEL
+			if local_density > low + hysteresis:
+				return Config.Phase.ALIGN
+			return Config.Phase.WANDER
+		Config.Phase.ALIGN:
+			if local_density < low - hysteresis:
+				return Config.Phase.WANDER
+			if local_density > high + hysteresis:
+				return Config.Phase.REPEL
+			return Config.Phase.ALIGN
+		Config.Phase.REPEL:
+			if local_density < low:
+				return Config.Phase.WANDER
+			if local_density < high - hysteresis:
+				return Config.Phase.ALIGN
+			return Config.Phase.REPEL
+		_:
+			return Config.Phase.WANDER
 
 func compute_steering(
 	agent,
@@ -45,20 +79,27 @@ func compute_steering(
 	var cohesion = _delta(agent.position, avg_pos).normalized()
 	var separation_dir = separation.normalized()
 	var noise = _wander_force(rng)
+	var forward = agent.velocity.normalized() if agent.velocity.length_squared() > 0.0001 else _wander_force(rng).normalized()
+	var cohesion_scale = _cohesion_ratio
+	var repel_scale = 1.0 - _cohesion_ratio
 
 	match phase:
 		Config.Phase.WANDER:
 			return (noise * Config.FORCE_WANDER) \
-				+ (alignment * Config.FORCE_ALIGN * Config.WANDER_ALIGN_FACTOR)
+				+ (alignment * Config.FORCE_ALIGN * Config.WANDER_ALIGN_FACTOR) \
+				+ (cohesion * Config.FORCE_COHESION * Config.WANDER_COHESION_FACTOR * cohesion_scale) \
+				+ (forward * Config.FORCE_FORWARD)
 		Config.Phase.ALIGN:
 			return (alignment * Config.FORCE_ALIGN) \
-				+ (cohesion * Config.FORCE_COHESION) \
-				+ (separation_dir * Config.FORCE_SEPARATION * Config.ALIGN_SEPARATION_FACTOR) \
+				+ (cohesion * Config.FORCE_COHESION * cohesion_scale) \
+				+ (separation_dir * Config.FORCE_SEPARATION * Config.ALIGN_SEPARATION_FACTOR * repel_scale) \
 				+ (lattice * Config.FORCE_ALIGN * Config.ALIGN_TRIANGLE_LATTICE_FACTOR) \
-				+ (noise * Config.FORCE_WANDER * Config.ALIGN_NOISE_FACTOR)
+				+ (noise * Config.FORCE_WANDER * Config.ALIGN_NOISE_FACTOR) \
+				+ (forward * Config.FORCE_FORWARD)
 		Config.Phase.REPEL:
-			return (separation_dir * Config.FORCE_REPEL) \
-				+ (noise * Config.FORCE_WANDER * Config.REPEL_NOISE_FACTOR)
+			return (separation_dir * Config.FORCE_REPEL * repel_scale) \
+				+ (noise * Config.FORCE_WANDER * Config.REPEL_NOISE_FACTOR) \
+				+ (forward * Config.FORCE_FORWARD)
 		_:
 			return noise * Config.FORCE_WANDER
 

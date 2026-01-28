@@ -5,12 +5,17 @@ const Config = preload("res://scripts/config.gd")
 
 var model: Object = null
 @onready var overlay = get_node_or_null("../UiOverlay/Overlay")
+var _density_image: Image = null
+var _density_texture: ImageTexture = null
+var _density_texture_size := Vector2i.ZERO
+var _density_version := -1
 
 func set_model(p_model: Object) -> void:
 	model = p_model
 	queue_redraw()
 
 func _ready() -> void:
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	var vp = get_viewport()
 	var clear_mode = RenderingServer.VIEWPORT_CLEAR_ALWAYS
 	if Config.TRAILS_ENABLED:
@@ -27,6 +32,12 @@ func _draw() -> void:
 	if not model.has_method("get_agents"):
 		return
 	var agents = model.get_agents()
+	if model.has_method("is_density_enabled") and model.is_density_enabled():
+		if model.has_method("get_density_grid") and model.has_method("get_density_grid_size"):
+			var density_version = -1
+			if model.has_method("get_density_version"):
+				density_version = model.get_density_version()
+			_draw_density_glow(model.get_density_grid(), model.get_density_grid_size(), viewport_rect.size, density_version)
 	var zones = []
 	if model.has_method("get_zones"):
 		zones = model.get_zones()
@@ -42,7 +53,7 @@ func _draw() -> void:
 	for agent in agents:
 		if has_overlay and overlay_rect.has_point(agent.position):
 			continue
-		var color = _color_for_phase(agent.phase)
+		var color = _color_with_density(_color_for_phase(agent.phase), agent.local_density)
 		match Config.RENDER_STYLE:
 			Config.RenderStyle.VELOCITY_LINES:
 				var vel = agent.velocity
@@ -64,6 +75,17 @@ func _color_for_phase(phase: int) -> Color:
 			return Config.COLOR_REPEL
 		_:
 			return Config.COLOR_WANDER
+
+func _color_with_density(color: Color, local_density: float) -> Color:
+	var t = clamp(local_density / max(0.0001, Config.DENSITY_THRESHOLD_HIGH), 0.0, 2.0)
+	var boost = 1.0 + (t * Config.TRAIL_DENSITY_INTENSITY)
+	var boosted = Color(
+		clamp(color.r * boost, 0.0, 1.0),
+		clamp(color.g * boost, 0.0, 1.0),
+		clamp(color.b * boost, 0.0, 1.0),
+		color.a
+	)
+	return boosted
 
 func _draw_agent_triangle(agent, color: Color, radius: float) -> void:
 	var dir = agent.velocity
@@ -87,3 +109,70 @@ func _draw_zones(zones: Array) -> void:
 		var outer = base_color
 		outer.a = Config.ZONE_GLOW_OUTER_ALPHA
 		draw_circle(zone.center, zone.radius * 1.12, outer)
+
+func _draw_density_glow(density_grid: PackedFloat32Array, grid_size: Vector2i, viewport_size: Vector2, version: int) -> void:
+	if density_grid.is_empty() or grid_size == Vector2i.ZERO:
+		return
+	_ensure_density_texture(grid_size)
+	if _density_image == null or _density_texture == null:
+		return
+	if version != _density_version:
+		var p95 = _density_percentile(density_grid, Config.DENSITY_GLOW_PERCENTILE)
+		if p95 <= 0.000001:
+			return
+		var index = 0
+		for y in range(grid_size.y):
+			for x in range(grid_size.x):
+				var value = density_grid[index]
+				index += 1
+				if value <= 0.0:
+					_density_image.set_pixel(x, y, Color(0.0, 0.0, 0.0, 0.0))
+					continue
+				var t = clamp(value / p95, 0.0, 1.0)
+				var alpha = lerp(Config.DENSITY_GLOW_ALPHA_MIN, Config.DENSITY_GLOW_ALPHA_MAX, t)
+				_density_image.set_pixel(x, y, Color(t, 1.0 - t, 0.0, alpha))
+		_density_texture.update(_density_image)
+		_density_version = version
+	draw_texture_rect(_density_texture, Rect2(Vector2.ZERO, viewport_size), false)
+
+func _density_percentile(values: PackedFloat32Array, percentile: float) -> float:
+	if values.is_empty():
+		return 0.0
+	var max_value := 0.0
+	var non_zero := 0
+	for i in values.size():
+		var value = values[i]
+		if value > 0.0:
+			non_zero += 1
+			if value > max_value:
+				max_value = value
+	if non_zero == 0 or max_value <= 0.0:
+		return 0.0
+	var bins = 64
+	var counts: PackedInt32Array = PackedInt32Array()
+	counts.resize(bins)
+	counts.fill(0)
+	var inv_max = 1.0 / max_value
+	for i in values.size():
+		var value = values[i]
+		if value <= 0.0:
+			continue
+		var t = clamp(value * inv_max, 0.0, 1.0)
+		var bin = int(floor(t * float(bins - 1)))
+		counts[bin] += 1
+	var target = int(ceil(float(non_zero) * clamp(percentile, 0.0, 1.0)))
+	var running = 0
+	for b in range(bins):
+		running += counts[b]
+		if running >= target:
+			var bin_value = (float(b) + 1.0) / float(bins)
+			return bin_value * max_value
+	return max_value
+
+func _ensure_density_texture(grid_size: Vector2i) -> void:
+	if _density_texture_size == grid_size and _density_image != null and _density_texture != null:
+		return
+	_density_texture_size = grid_size
+	_density_image = Image.create(grid_size.x, grid_size.y, false, Image.FORMAT_RGBA8)
+	_density_image.fill(Color(0.0, 0.0, 0.0, 0.0))
+	_density_texture = ImageTexture.create_from_image(_density_image)
