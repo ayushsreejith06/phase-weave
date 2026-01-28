@@ -59,14 +59,22 @@ text = "Start"
 [node name="RestartButton" type="Button" parent="UiOverlay/Overlay/VBox"]
 text = "Restart"
 
-[node name="PauseButton" type="Button" parent="UiOverlay/Overlay/VBox"]
-text = "Pause"
+[node name="AgentsRow" type="HBoxContainer" parent="UiOverlay/Overlay/VBox"]
+
+[node name="AgentsLabel" type="Label" parent="UiOverlay/Overlay/VBox/AgentsRow"]
+text = "Agents"
+
+[node name="AgentsInput" type="LineEdit" parent="UiOverlay/Overlay/VBox/AgentsRow"]
+text = "1000"
 
 [node name="StatsToggle" type="CheckButton" parent="UiOverlay/Overlay/VBox"]
 text = "Stats"
 
 [node name="DensityToggle" type="CheckButton" parent="UiOverlay/Overlay/VBox"]
 text = "Density Glow"
+
+[node name="MemoryToggle" type="CheckButton" parent="UiOverlay/Overlay/VBox"]
+text = "Memory Field"
 
 [node name="CohesionLabel" type="Label" parent="UiOverlay/Overlay/VBox"]
 text = "Cohesion/Repel: 50/50"
@@ -84,6 +92,42 @@ text = "Status: Idle"
 [node name="DebugLabel" type="Label" parent="UiOverlay/Overlay/VBox"]
 text = "Seed: --"
 
+[node name="FpsPanel" type="Control" parent="UiOverlay"]
+anchor_left = 1.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 0.0
+offset_left = -224.0
+offset_top = 12.0
+offset_right = -12.0
+offset_bottom = 62.0
+
+[node name="FpsPanelBox" type="Panel" parent="UiOverlay/FpsPanel"]
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 0.0
+
+[node name="FpsRow" type="HBoxContainer" parent="UiOverlay/FpsPanel"]
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = -8.0
+
+[node name="FpsDot" type="ColorRect" parent="UiOverlay/FpsPanel/FpsRow"]
+custom_minimum_size = Vector2(10, 10)
+color = Color(0.2, 0.9, 0.3, 1.0)
+
+[node name="FpsLabel" type="Label" parent="UiOverlay/FpsPanel/FpsRow"]
+text = "FPS 0"
 [node name="HoverViewportContainer" type="SubViewportContainer" parent="UiOverlay"]
 anchor_left = 0.0
 anchor_top = 0.0

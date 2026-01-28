@@ -31,6 +31,9 @@ var _memory_grid: PackedFloat32Array = PackedFloat32Array()
 var _memory_buffer: PackedFloat32Array = PackedFloat32Array()
 var _memory_grid_size := Vector2i.ZERO
 var _memory_cell_size := Vector2.ONE
+var _memory_enabled := Config.MEMORY_ENABLED_DEFAULT
+var _memory_tick_accum := 0
+var _density_tick_accum := 0
 
 func initialize(agent_count: int, p_bounds_size: Vector2, p_rng: RandomNumberGenerator) -> void:
 	agents.clear()
@@ -44,6 +47,8 @@ func initialize(agent_count: int, p_bounds_size: Vector2, p_rng: RandomNumberGen
 	_init_density_grid()
 	_update_density_cell_size()
 	_density_version = 0
+	_memory_tick_accum = 0
+	_density_tick_accum = 0
 	_init_memory_grid()
 	_update_memory_cell_size()
 
@@ -73,8 +78,19 @@ func step(dt: float, phase_rules) -> void:
 	_prune_zones()
 	_rebuild_zone_grid_if_needed()
 	_build_grid()
-	_apply_memory_decay(dt)
-	if _density_enabled:
+	if _memory_enabled:
+		var memory_step = max(1, Config.MEMORY_UPDATE_EVERY_TICKS)
+		_memory_tick_accum += 1
+		if _memory_tick_accum >= memory_step:
+			var memory_dt = dt * float(_memory_tick_accum)
+			_apply_memory_decay(memory_dt)
+			_memory_tick_accum = 0
+
+	var density_step = max(1, Config.DENSITY_UPDATE_EVERY_TICKS)
+	_density_tick_accum += 1
+	var update_density = _density_enabled and _density_tick_accum >= density_step
+	if update_density:
+		_density_tick_accum = 0
 		_clear_density_grid()
 
 	var next_phases: Array[int] = []
@@ -91,8 +107,10 @@ func step(dt: float, phase_rules) -> void:
 		var local_density = (float(neighbors.size()) / density_area) * Config.DENSITY_SCALE
 		var next_phase = phase_rules.compute_phase(agent.phase, local_density, agent.phase_time)
 
-		var phase_steering = phase_rules.compute_steering(agent, neighbors, next_phase, bounds_size, rng)
-		var memory_steering = _compute_memory_force(agent.position, next_phase)
+		var phase_steering = phase_rules.compute_steering(agent, neighbors, next_phase, bounds_size, rng, local_density)
+		var memory_steering = Vector2.ZERO
+		if _memory_enabled:
+			memory_steering = _compute_memory_force(agent.position, next_phase)
 		var zone_steering = _compute_zone_force(agent.position)
 		var steering = phase_steering + memory_steering + zone_steering
 
@@ -121,11 +139,15 @@ func step(dt: float, phase_rules) -> void:
 		agent.position += agent.velocity * dt
 		_contain_agent(agent)
 		var distance_traveled = agent.position.distance_to(previous_pos)
-		if distance_traveled > 0.0:
-			_deposit_memory_at(agent.position, distance_traveled * Config.MEMORY_DEPOSIT_PER_UNIT)
-		if _density_enabled:
+		if _memory_enabled:
+			var memory_amount = 0.0
+			if distance_traveled > 0.0:
+				memory_amount += distance_traveled * Config.MEMORY_DEPOSIT_PER_UNIT
+			if memory_amount > 0.0:
+				_deposit_memory_at(agent.position, memory_amount)
+		if update_density:
 			_deposit_density_at(agent.position)
-	if _density_enabled:
+	if update_density:
 		_density_version += 1
 
 func _contain_agent(agent: Agent) -> void:
@@ -382,6 +404,15 @@ func get_density_grid_size() -> Vector2i:
 func get_density_version() -> int:
 	return _density_version
 
+func get_memory_grid_size() -> Vector2i:
+	return _memory_grid_size
+
+func set_memory_enabled(enabled: bool) -> void:
+	_memory_enabled = enabled
+	if not _memory_enabled:
+		if not _memory_grid.is_empty():
+			_memory_grid.fill(0.0)
+
 func _init_memory_grid() -> void:
 	_memory_grid_size = Config.MEMORY_GRID_SIZE
 	var total = _memory_grid_size.x * _memory_grid_size.y
@@ -478,6 +509,8 @@ func _apply_memory_diffusion() -> void:
 		_memory_grid[i] = _memory_buffer[i]
 
 func _deposit_memory_at(pos: Vector2, amount: float) -> void:
+	if not _memory_enabled:
+		return
 	if amount <= 0.0 or _memory_grid.is_empty():
 		return
 	var cell = _memory_cell_for_position(pos)
@@ -501,6 +534,8 @@ func _add_memory_cell(x: int, y: int, amount: float) -> void:
 	_memory_grid[index] = min(_memory_grid[index] + amount, Config.MEMORY_MAX)
 
 func _compute_memory_force(pos: Vector2, phase: int) -> Vector2:
+	if not _memory_enabled:
+		return Vector2.ZERO
 	if _memory_grid.is_empty():
 		return Vector2.ZERO
 	var cell = _memory_cell_for_position(pos)

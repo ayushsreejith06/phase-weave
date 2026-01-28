@@ -16,7 +16,15 @@ var _resize_timer: Timer
 var _stats_enabled := false
 var _held_zone_type := -1
 var _density_glow_enabled := false
+var _memory_enabled := Config.MEMORY_ENABLED_DEFAULT
 var _cohesion_ratio := 0.5
+var _perf_enabled := Config.PERF_PROFILING_ENABLED
+var _perf_tick_accum_us := 0
+var _perf_tick_samples := 0
+var _perf_tick_count := 0
+var _perf_frame_count := 0
+var _perf_last_print_tick := 0
+var _perf_last_print_frame := 0
 
 @onready var renderer = get_node_or_null("../SwarmRenderer")
 @onready var ui_overlay = get_node_or_null("../UiOverlay")
@@ -46,6 +54,8 @@ func _ready() -> void:
 
 	if renderer != null and renderer.has_method("set_model"):
 		renderer.set_model(model)
+		if renderer.has_method("set_perf_enabled"):
+			renderer.set_perf_enabled(_perf_enabled)
 
 	if ui_overlay != null:
 		if ui_overlay.has_signal("start_requested"):
@@ -58,13 +68,19 @@ func _ready() -> void:
 			ui_overlay.stats_toggled.connect(_on_stats_toggled)
 		if ui_overlay.has_signal("density_toggled"):
 			ui_overlay.density_toggled.connect(_on_density_toggled)
+		if ui_overlay.has_signal("memory_toggled"):
+			ui_overlay.memory_toggled.connect(_on_memory_toggled)
 		if ui_overlay.has_signal("cohesion_ratio_changed"):
 			ui_overlay.cohesion_ratio_changed.connect(_on_cohesion_ratio_changed)
+		if ui_overlay.has_signal("agent_count_changed"):
+			ui_overlay.agent_count_changed.connect(_on_agent_count_changed)
 		if ui_overlay.has_method("set_stats"):
 			stats_updated.connect(ui_overlay.set_stats)
 
 	model.initialize(Config.DEFAULT_AGENT_COUNT, viewport_size, rng)
 	model.set_density_enabled(_density_glow_enabled)
+	if model.has_method("set_memory_enabled"):
+		model.set_memory_enabled(_memory_enabled)
 	phase_rules.set_cohesion_ratio(_cohesion_ratio)
 	if renderer != null:
 		renderer.queue_redraw()
@@ -73,6 +89,10 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	_update_hover_stats()
 	_update_held_zone(_delta)
+	_perf_frame_count += 1
+	if _perf_enabled and (_perf_frame_count - _perf_last_print_frame) >= Config.PERF_PRINT_EVERY_FRAMES:
+		_perf_last_print_frame = _perf_frame_count
+		_print_perf("frame")
 
 func _on_start_requested() -> void:
 	if _paused and ui_overlay != null and ui_overlay.has_method("set_paused"):
@@ -95,10 +115,13 @@ func _on_restart_requested() -> void:
 		print("Seed: %s" % [rng.seed])
 	model.initialize(Config.DEFAULT_AGENT_COUNT, viewport_size, rng)
 	model.set_density_enabled(_density_glow_enabled)
+	if model.has_method("set_memory_enabled"):
+		model.set_memory_enabled(_memory_enabled)
 	phase_rules.set_cohesion_ratio(_cohesion_ratio)
 	if renderer != null:
 		renderer.queue_redraw()
 	_emit_stats()
+
 
 func _on_pause_toggled(paused: bool) -> void:
 	if tick_timer == null:
@@ -122,15 +145,46 @@ func _on_density_toggled(enabled: bool) -> void:
 	if renderer != null:
 		renderer.queue_redraw()
 
+func _on_memory_toggled(enabled: bool) -> void:
+	_memory_enabled = enabled
+	if model.has_method("set_memory_enabled"):
+		model.set_memory_enabled(enabled)
+
 func _on_cohesion_ratio_changed(ratio: float) -> void:
 	_cohesion_ratio = ratio
 	phase_rules.set_cohesion_ratio(ratio)
 
-func _on_tick() -> void:
-	model.step(Config.TICK_DT, phase_rules)
+func _on_agent_count_changed(count: int) -> void:
+	if count <= 0:
+		return
+	rng.randomize()
+	if Config.DEBUG_PRINT_SEED:
+		print("Seed: %s" % [rng.seed])
+	model.initialize(count, viewport_size, rng)
+	model.set_density_enabled(_density_glow_enabled)
+	if model.has_method("set_memory_enabled"):
+		model.set_memory_enabled(_memory_enabled)
+	phase_rules.set_cohesion_ratio(_cohesion_ratio)
 	if renderer != null:
 		renderer.queue_redraw()
 	_emit_stats()
+
+func _on_tick() -> void:
+	var perf_start := 0
+	if _perf_enabled:
+		perf_start = Time.get_ticks_usec()
+	model.step(Config.TICK_DT, phase_rules)
+	if _perf_enabled:
+		var tick_us = Time.get_ticks_usec() - perf_start
+		_perf_tick_accum_us += tick_us
+		_perf_tick_samples += 1
+	_perf_tick_count += 1
+	if renderer != null:
+		renderer.queue_redraw()
+	_emit_stats()
+	if _perf_enabled and (_perf_tick_count - _perf_last_print_tick) >= Config.PERF_PRINT_EVERY_TICKS:
+		_perf_last_print_tick = _perf_tick_count
+		_print_perf("tick")
 
 func _emit_stats() -> void:
 	if stats_updated.get_connections().is_empty():
@@ -177,6 +231,13 @@ func _apply_resize() -> void:
 	model.set_bounds_size(viewport_size)
 
 func _input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_F3:
+			_perf_enabled = not _perf_enabled
+			if renderer != null and renderer.has_method("set_perf_enabled"):
+				renderer.set_perf_enabled(_perf_enabled)
+			print("Perf profiling: %s" % ["ON" if _perf_enabled else "OFF"])
+			return
 	if event is InputEventMouseButton and event.pressed:
 		var mouse_pos = event.position
 		if ui_overlay != null and ui_overlay.has_method("is_point_over_ui"):
@@ -258,3 +319,32 @@ func _phase_color(phase: int) -> Color:
 			return Config.COLOR_REPEL
 		_:
 			return Config.COLOR_WANDER
+
+func _print_perf(source: String) -> void:
+	var avg_tick_ms := 0.0
+	if _perf_tick_samples > 0:
+		avg_tick_ms = float(_perf_tick_accum_us) / float(_perf_tick_samples) / 1000.0
+	_perf_tick_accum_us = 0
+	_perf_tick_samples = 0
+	var fps = Engine.get_frames_per_second()
+	var render_ms_text = "n/a"
+	if renderer != null and renderer.has_method("get_last_draw_time_ms"):
+		render_ms_text = "%.2f" % [renderer.get_last_draw_time_ms()]
+	var agents_count = model.get_agents().size()
+	var zones_count = model.get_zones().size()
+	var density_size = model.get_density_grid_size()
+	var memory_size = Vector2i.ZERO
+	if model.has_method("get_memory_grid_size"):
+		memory_size = model.get_memory_grid_size()
+	print(
+		"[Perf/%s] fps=%.1f tick_ms=%.2f render_ms=%s agents=%d zones=%d density=%dx%d memory=%dx%d" % [
+			source,
+			fps,
+			avg_tick_ms,
+			render_ms_text,
+			agents_count,
+			zones_count,
+			density_size.x, density_size.y,
+			memory_size.x, memory_size.y
+		]
+	)

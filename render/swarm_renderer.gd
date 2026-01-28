@@ -9,10 +9,18 @@ var _density_image: Image = null
 var _density_texture: ImageTexture = null
 var _density_texture_size := Vector2i.ZERO
 var _density_version := -1
+var _perf_enabled := false
+var _last_draw_ms := 0.0
 
 func set_model(p_model: Object) -> void:
 	model = p_model
 	queue_redraw()
+
+func set_perf_enabled(enabled: bool) -> void:
+	_perf_enabled = enabled
+
+func get_last_draw_time_ms() -> float:
+	return _last_draw_ms
 
 func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
@@ -23,6 +31,9 @@ func _ready() -> void:
 	RenderingServer.viewport_set_clear_mode(vp.get_viewport_rid(), clear_mode)
 
 func _draw() -> void:
+	var perf_start := 0
+	if _perf_enabled:
+		perf_start = Time.get_ticks_usec()
 	var viewport_rect = get_viewport_rect()
 	if Config.TRAILS_ENABLED and viewport_rect.size != Vector2.ZERO:
 		draw_rect(viewport_rect, Config.TRAIL_FADE_COLOR, true)
@@ -66,6 +77,8 @@ func _draw() -> void:
 				_draw_agent_triangle(agent, color, Config.RENDER_CIRCLE_RADIUS)
 			_:
 				_draw_agent_triangle(agent, color, Config.RENDER_POINT_RADIUS)
+	if _perf_enabled:
+		_last_draw_ms = float(Time.get_ticks_usec() - perf_start) / 1000.0
 
 func _color_for_phase(phase: int) -> Color:
 	match phase:
