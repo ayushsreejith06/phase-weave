@@ -23,6 +23,7 @@ func compute_steering(
 	var avg_pos := Vector2.ZERO
 	var avg_vel := Vector2.ZERO
 	var separation := Vector2.ZERO
+	var lattice := Vector2.ZERO
 
 	for neighbor in neighbors:
 		avg_pos += neighbor.position
@@ -31,9 +32,14 @@ func compute_steering(
 		var dist_sq = delta.length_squared()
 		if dist_sq > 0.0001:
 			separation -= delta / dist_sq
+			var dist = sqrt(dist_sq)
+			var dir = delta / dist
+			var offset = (dist - Config.TRIANGLE_LATTICE_DISTANCE) / Config.TRIANGLE_LATTICE_DISTANCE
+			lattice += dir * offset
 
 	avg_pos /= float(neighbors.size())
 	avg_vel /= float(neighbors.size())
+	lattice /= float(neighbors.size())
 
 	var alignment = (avg_vel - agent.velocity).normalized()
 	var cohesion = _delta(agent.position, avg_pos).normalized()
@@ -48,6 +54,7 @@ func compute_steering(
 			return (alignment * Config.FORCE_ALIGN) \
 				+ (cohesion * Config.FORCE_COHESION) \
 				+ (separation_dir * Config.FORCE_SEPARATION * Config.ALIGN_SEPARATION_FACTOR) \
+				+ (lattice * Config.FORCE_ALIGN * Config.ALIGN_TRIANGLE_LATTICE_FACTOR) \
 				+ (noise * Config.FORCE_WANDER * Config.ALIGN_NOISE_FACTOR)
 		Config.Phase.REPEL:
 			return (separation_dir * Config.FORCE_REPEL) \

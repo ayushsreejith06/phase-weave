@@ -13,12 +13,16 @@ var phase_rules := PhaseRules.new()
 var tick_timer: Timer
 var _paused := false
 var _resize_timer: Timer
+var _stats_enabled := false
+var _held_zone_type := -1
 
 @onready var renderer = get_node_or_null("../SwarmRenderer")
 @onready var ui_overlay = get_node_or_null("../UiOverlay")
 @onready var viewport_size := get_viewport().get_visible_rect().size
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	set_process_input(true)
 	rng.seed = Config.DEFAULT_SEED
 	get_viewport().size_changed.connect(_on_viewport_resized)
 	if Config.DEBUG_PRINT_SEED:
@@ -48,6 +52,8 @@ func _ready() -> void:
 			ui_overlay.restart_requested.connect(_on_restart_requested)
 		if ui_overlay.has_signal("pause_toggled"):
 			ui_overlay.pause_toggled.connect(_on_pause_toggled)
+		if ui_overlay.has_signal("stats_toggled"):
+			ui_overlay.stats_toggled.connect(_on_stats_toggled)
 		if ui_overlay.has_method("set_stats"):
 			stats_updated.connect(ui_overlay.set_stats)
 
@@ -55,6 +61,10 @@ func _ready() -> void:
 	if renderer != null:
 		renderer.queue_redraw()
 	_emit_stats()
+
+func _process(_delta: float) -> void:
+	_update_hover_stats()
+	_update_held_zone(_delta)
 
 func _on_start_requested() -> void:
 	if _paused and ui_overlay != null and ui_overlay.has_method("set_paused"):
@@ -88,6 +98,11 @@ func _on_pause_toggled(paused: bool) -> void:
 		tick_timer.stop()
 	else:
 		tick_timer.start()
+
+func _on_stats_toggled(enabled: bool) -> void:
+	_stats_enabled = enabled
+	if ui_overlay != null and ui_overlay.has_method("set_hover_stats") and not enabled:
+		ui_overlay.set_hover_stats("")
 
 func _on_tick() -> void:
 	model.step(Config.TICK_DT, phase_rules)
@@ -138,3 +153,85 @@ func _on_viewport_resized() -> void:
 func _apply_resize() -> void:
 	viewport_size = get_viewport().get_visible_rect().size
 	model.set_bounds_size(viewport_size)
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed:
+		var mouse_pos = event.position
+		if ui_overlay != null and ui_overlay.has_method("is_point_over_ui"):
+			if ui_overlay.is_point_over_ui(mouse_pos):
+				return
+		match event.button_index:
+			MOUSE_BUTTON_LEFT:
+				model.add_zone(Config.ZoneType.REPULSE, mouse_pos)
+				_held_zone_type = Config.ZoneType.REPULSE
+				if renderer != null:
+					renderer.queue_redraw()
+			MOUSE_BUTTON_RIGHT:
+				model.add_zone(Config.ZoneType.ATTRACT, mouse_pos)
+				_held_zone_type = Config.ZoneType.ATTRACT
+				if renderer != null:
+					renderer.queue_redraw()
+	elif event is InputEventMouseButton and not event.pressed:
+		if event.button_index == MOUSE_BUTTON_LEFT or event.button_index == MOUSE_BUTTON_RIGHT:
+			_held_zone_type = -1
+
+func _update_hover_stats() -> void:
+	if not _stats_enabled or not _paused:
+		return
+	if ui_overlay == null or not ui_overlay.has_method("set_hover_stats_at"):
+		return
+	var mouse_pos = get_viewport().get_mouse_position()
+	if ui_overlay.has_method("is_point_over_ui") and ui_overlay.is_point_over_ui(mouse_pos):
+		ui_overlay.set_hover_stats("")
+		return
+	var agent = model.find_agent_at_position(mouse_pos, Config.HOVER_PICK_RADIUS)
+	if agent == null:
+		ui_overlay.set_hover_stats("")
+		return
+	var dist_sq = mouse_pos.distance_squared_to(agent.position)
+	if dist_sq > Config.HOVER_PICK_RADIUS * Config.HOVER_PICK_RADIUS:
+		ui_overlay.set_hover_stats("")
+		return
+	var phase_name = _phase_name(agent.phase)
+	var phase_color = _phase_color(agent.phase)
+	var speed = agent.velocity.length()
+	var text = "Phase: [color=%s]%s[/color]\nPos: %.1f, %.1f\nSpeed: %.1f\nVel: %.1f, %.1f\nDensity: %.2f\nSteer phase: %.2f, %.2f\nSteer zone: %.2f, %.2f" % [
+		phase_color.to_html(false),
+		phase_name,
+		agent.position.x, agent.position.y,
+		speed,
+		agent.velocity.x, agent.velocity.y,
+		agent.local_density,
+		agent.steering_phase.x, agent.steering_phase.y,
+		agent.steering_zone.x, agent.steering_zone.y
+	]
+	ui_overlay.set_hover_stats_at(text, agent.position)
+
+func _update_held_zone(delta: float) -> void:
+	if _held_zone_type < 0:
+		return
+	var mouse_pos = get_viewport().get_mouse_position()
+	if ui_overlay != null and ui_overlay.has_method("is_point_over_ui"):
+		if ui_overlay.is_point_over_ui(mouse_pos):
+			return
+	model.grow_zone_at(_held_zone_type, mouse_pos, Config.ZONE_GROW_PER_SECOND * delta)
+	if renderer != null:
+		renderer.queue_redraw()
+
+func _phase_name(phase: int) -> String:
+	match phase:
+		Config.Phase.ALIGN:
+			return "Align"
+		Config.Phase.REPEL:
+			return "Repel"
+		_:
+			return "Wander"
+
+func _phase_color(phase: int) -> Color:
+	match phase:
+		Config.Phase.ALIGN:
+			return Config.COLOR_ALIGN
+		Config.Phase.REPEL:
+			return Config.COLOR_REPEL
+		_:
+			return Config.COLOR_WANDER

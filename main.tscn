@@ -23,7 +23,7 @@ anchor_bottom = 0.0
 offset_left = 12.0
 offset_top = 12.0
 offset_right = 280.0
-offset_bottom = 220.0
+offset_bottom = 260.0
 
 [node name="Backdrop" type="ColorRect" parent="UiOverlay/Overlay"]
 anchor_left = 0.0
@@ -55,5 +55,41 @@ text = "Restart"
 [node name="PauseButton" type="Button" parent="UiOverlay/Overlay/VBox"]
 text = "Pause"
 
+[node name="StatsToggle" type="CheckButton" parent="UiOverlay/Overlay/VBox"]
+text = "Stats"
+
 [node name="DebugLabel" type="Label" parent="UiOverlay/Overlay/VBox"]
 text = "Seed: --"
+
+[node name="HoverViewportContainer" type="SubViewportContainer" parent="UiOverlay"]
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 0.0
+mouse_filter = 2
+
+[node name="HoverViewport" type="SubViewport" parent="UiOverlay/HoverViewportContainer"]
+transparent_bg = true
+
+[node name="HoverLayer" type="Control" parent="UiOverlay/HoverViewportContainer/HoverViewport"]
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 0.0
+mouse_filter = 2
+
+[node name="HoverBackdrop" type="ColorRect" parent="UiOverlay/HoverViewportContainer/HoverViewport/HoverLayer"]
+color = Color(0.0, 0.0, 0.0, 0.9)
+mouse_filter = 2
+
+[node name="HoverLabel" type="RichTextLabel" parent="UiOverlay/HoverViewportContainer/HoverViewport/HoverLayer"]
+text = ""
+mouse_filter = 2

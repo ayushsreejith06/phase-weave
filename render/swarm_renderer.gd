@@ -27,6 +27,10 @@ func _draw() -> void:
 	if not model.has_method("get_agents"):
 		return
 	var agents = model.get_agents()
+	var zones = []
+	if model.has_method("get_zones"):
+		zones = model.get_zones()
+	_draw_zones(zones)
 	if agents.is_empty():
 		return
 
@@ -43,14 +47,14 @@ func _draw() -> void:
 			Config.RenderStyle.VELOCITY_LINES:
 				var vel = agent.velocity
 				if vel.length_squared() < 0.0001:
-					draw_circle(agent.position, Config.RENDER_POINT_RADIUS, color)
+					_draw_agent_triangle(agent, color, Config.RENDER_POINT_RADIUS)
 				else:
 					var end_pos = agent.position + vel * Config.RENDER_VELOCITY_LINE_SCALE
 					draw_line(agent.position, end_pos, color, 1.0, true)
 			Config.RenderStyle.CIRCLES:
-				draw_circle(agent.position, Config.RENDER_CIRCLE_RADIUS, color)
+				_draw_agent_triangle(agent, color, Config.RENDER_CIRCLE_RADIUS)
 			_:
-				draw_circle(agent.position, Config.RENDER_POINT_RADIUS, color)
+				_draw_agent_triangle(agent, color, Config.RENDER_POINT_RADIUS)
 
 func _color_for_phase(phase: int) -> Color:
 	match phase:
@@ -60,3 +64,26 @@ func _color_for_phase(phase: int) -> Color:
 			return Config.COLOR_REPEL
 		_:
 			return Config.COLOR_WANDER
+
+func _draw_agent_triangle(agent, color: Color, radius: float) -> void:
+	var dir = agent.velocity
+	if dir.length_squared() < 0.0001:
+		dir = Vector2.RIGHT
+	else:
+		dir = dir.normalized()
+	var perp = Vector2(-dir.y, dir.x)
+	var tip = agent.position + dir * (radius * 1.7)
+	var base = agent.position - dir * (radius * 0.9)
+	var left = base + perp * (radius * 0.9)
+	var right = base - perp * (radius * 0.9)
+	draw_polygon(PackedVector2Array([tip, left, right]), PackedColorArray([color, color, color]))
+
+func _draw_zones(zones: Array) -> void:
+	if zones == null or zones.is_empty():
+		return
+	for zone in zones:
+		var base_color = Config.ZONE_COLOR_REPEL if zone.type == Config.ZoneType.REPULSE else Config.ZONE_COLOR_ATTRACT
+		draw_circle(zone.center, zone.radius, base_color)
+		var outer = base_color
+		outer.a = Config.ZONE_GLOW_OUTER_ALPHA
+		draw_circle(zone.center, zone.radius * 1.12, outer)
